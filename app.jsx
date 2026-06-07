@@ -178,6 +178,7 @@ function Topbar({ now, onAdd, onDigest, query, setQuery, onRefresh, refreshing, 
         <Ico d={I.search} size={15} />
         <input placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
       </div>
+      <div className="topbar-spacer" />
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600 }}>
           <span className="pulse-dot" style={{ background: open ? 'var(--up)' : 'var(--ink-3)' }} />

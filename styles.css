@@ -67,7 +67,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   display: flex; align-items: center; gap: 9px;
   background: var(--surface-3); border: 1px solid transparent;
   border-radius: 10px; padding: 0 12px; height: 38px;
-  flex: 1 1 180px; min-width: 110px; max-width: 360px;
+  flex: 0 1 320px; min-width: 110px; max-width: 360px;
   transition: .16s;
 }
 .searchbox:focus-within { background: var(--surface); border-color: var(--border-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -107,7 +107,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 .wl {
   position: relative; display: grid; grid-template-columns: 1fr auto; gap: 10px;
-  align-items: center; padding: 11px 12px; border-radius: 12px; cursor: pointer;
+  align-items: center; padding: 12px 13px; border-radius: 12px; cursor: pointer;
   transition: background .14s; border: 1px solid transparent;
 }
 .wl:hover { background: var(--surface-2); }
@@ -115,13 +115,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .wl.active::before { content:""; position: absolute; left: -10px; top: 14px; bottom: 14px; width: 3px; border-radius: 3px; background: var(--accent); }
 .wl-left { min-width: 0; }
 .wl-tk { display: flex; align-items: center; gap: 7px; }
-.wl-tk b { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: -0.02em; }
-.wl-name { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; max-width: 150px; }
+.wl-tk b { font-family: var(--mono); font-weight: 700; font-size: 15.5px; letter-spacing: -0.02em; }
+.wl-name { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; max-width: 150px; }
 .wl-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.wl-price { font-family: var(--mono); font-size: 13.5px; font-weight: 600; }
+.wl-price { font-family: var(--mono); font-size: 15px; font-weight: 600; }
 .spark { display: block; }
 
-.pill { font-family: var(--mono); font-size: 11.5px; font-weight: 600; padding: 1.5px 6px; border-radius: 6px; white-space: nowrap; }
+.pill { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
 .pill.up { color: var(--up); background: var(--up-soft); }
 .pill.down { color: var(--down); background: var(--down-soft); }
 .flag-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); flex-shrink: 0; }
@@ -168,9 +168,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .stat .k { font-size: 11px; color: var(--ink-3); font-weight: 600; letter-spacing: .02em; }
 .stat .v { font-family: var(--mono); font-size: 15px; font-weight: 600; margin-top: 5px; }
 
-/* layout grid */
-.grid2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; margin-top: 20px; align-items: start; }
-@media (max-width: 980px){ .grid2 { grid-template-columns: 1fr; } }
+/* layout grid — single column so panels stack: AI Insight, News, Risk, Alerts */
+.grid2 { display: grid; grid-template-columns: 1fr; gap: 20px; margin-top: 20px; align-items: start; }
 .col { display: flex; flex-direction: column; gap: 20px; }
 
 /* AI insight */
