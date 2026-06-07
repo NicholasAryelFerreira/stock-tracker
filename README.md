@@ -19,6 +19,17 @@ reachable over HTTP.
 
 ## Running
 
+### Quick start (Windows)
+
+```powershell
+.\run.ps1
+```
+
+`run.ps1` is idempotent: on first run it creates the venv, installs deps, and
+copies `.env.example` to `.env` (edit it to add your key); on every run it just
+starts the server at <http://localhost:8000>. The steps below are the manual
+equivalent / for non-Windows.
+
 ### 1. Install backend deps
 
 ```sh
