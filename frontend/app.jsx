@@ -78,7 +78,7 @@ function App() {
     r.setProperty('--accent', c.a); r.setProperty('--accent-soft', c.soft); r.setProperty('--accent-ink', c.ink);
   }, [tw.accent]);
 
-  // versioned market snapshot — bumping `version` regenerates ALL prices/news/risks (free, no API)
+  // refresh counter — also the AI-cache namespace; bumping it triggers a fresh data fetch
   const [version, setVersion] = useState(() => LS.get('version', 0));
   const [aiCache, setAiCache] = useState(() => LS.get('aiCache', {}));     // { "TK#ver": insight }
   const [newsCache, setNewsCache] = useState(() => LS.get('newsCache', {})); // { "TK#ver": summary }
@@ -90,39 +90,68 @@ function App() {
   useEffect(() => { LS.set('newsCache', newsCache); }, [newsCache]);
   useEffect(() => { LS.set('lastRefresh', lastRefresh); }, [lastRefresh]);
 
-  // build all stocks for the current snapshot (memoized; deterministic per version)
-  const stocks = useMemo(() => {
-    const m = {}; tickers.forEach(tk => { m[tk] = MD.buildStock(tk, version); }); return m;
+  // real market data, fetched from the backend (yfinance) — no mock data
+  const [stocks, setStocks] = useState({});        // { TK: stock }
+  const [dataErrors, setDataErrors] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState(null);
+  const pendingFresh = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fresh = pendingFresh.current; pendingFresh.current = false;
+    setLoading(true); setLoadErr(null);
+    MD.fetchStocks(tickers, { fresh }).then(res => {
+      if (cancelled) return;
+      setStocks(prev => ({ ...prev, ...(res.stocks || {}) }));
+      setDataErrors(res.errors || {});
+      setLoading(false);
+    }).catch(e => { if (cancelled) return; setLoadErr(e.message || 'Failed to load'); setLoading(false); });
+    return () => { cancelled = true; };
   }, [tickers, version]);
+
   const stockList = tickers.map(tk => stocks[tk]).filter(Boolean);
   const sel = stocks[selected] || stockList[0];
 
-  // resolve AI content: live cache for this snapshot, else pre-written seed (zero API cost)
+  // AI content: live cache for this snapshot only — no canned/fake data, empty until generated
   const vKey = (tk) => tk + '#' + version;
-  const resolveInsight = (tk) => aiCache[vKey(tk)] || window.AI.SEED_INSIGHTS[tk] || null;
-  const resolveNews = (tk) => { const c = newsCache[vKey(tk)]; return c !== undefined ? c : window.AI.SEED_NEWS[tk]; };
-  const isLiveAI = (tk) => !!aiCache[vKey(tk)];
+  const resolveInsight = (tk) => aiCache[vKey(tk)] || null;
+  const resolveNews = (tk) => newsCache[vKey(tk)];
 
   const regenInsight = useCallback(async (tk) => {
-    const r = await window.AI.insight(MD.buildStock(tk, version));
+    const s = stocks[tk]; if (!s) return null;
+    const r = await window.AI.insight(s);
     setAiCache(p => ({ ...p, [tk + '#' + version]: r })); return r;
-  }, [version]);
+  }, [stocks, version]);
 
-  // Refresh EVERYTHING: new prices/news/risks for all stocks + a fresh live AI read for the open stock
-  async function refreshAll() {
+  // Refresh EVERYTHING: refetch live market data for all stocks, then a fresh AI read for the open one.
+  function refreshAll() {
     if (refreshing) return;
     setRefreshing(true);
-    const v = version + 1;
-    setVersion(v);
-    try {
-      const s = MD.buildStock(selected, v);
-      const [ins, sum] = await Promise.all([window.AI.insight(s), window.AI.summarizeNews(s)]);
-      setAiCache(p => ({ ...p, [selected + '#' + v]: ins }));
-      setNewsCache(p => ({ ...p, [selected + '#' + v]: sum }));
-    } catch (e) { /* keep seed fallback */ }
-    setLastRefresh(Date.now());
-    setRefreshing(false);
+    pendingFresh.current = true;
+    setVersion(version + 1);
   }
+
+  // Once fresh data for the new version is in, generate the AI read for the open stock, then finish.
+  const aiKickRef = useRef(-1);
+  useEffect(() => {
+    if (!refreshing) return;
+    const s = stocks[selected];
+    if (!s || aiKickRef.current === version) return;
+    aiKickRef.current = version;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [ins, sum] = await Promise.all([window.AI.insight(s), window.AI.summarizeNews(s)]);
+        if (!cancelled) {
+          setAiCache(p => ({ ...p, [selected + '#' + version]: ins }));
+          setNewsCache(p => ({ ...p, [selected + '#' + version]: sum }));
+        }
+      } catch (e) { /* keep prior */ }
+      if (!cancelled) { setLastRefresh(Date.now()); setRefreshing(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [refreshing, stocks, selected, version]);
 
   function addTicker(tk) {
     tk = tk.toUpperCase().trim();
@@ -134,6 +163,7 @@ function App() {
     setTickers(next);
     if (selected === tk) setSelected(next[0] || null);
   }
+  function retryLoad() { pendingFresh.current = true; setVersion(version + 1); }
 
   const filtered = stockList.filter(s => !query || s.tk.includes(query.toUpperCase()) || s.name.toLowerCase().includes(query.toLowerCase()));
 
@@ -141,13 +171,19 @@ function App() {
     <div className="app" data-density={tw.density}>
       <Topbar now={now} onDigest={() => setDigestOpen(true)} query={query} setQuery={setQuery} onRefresh={refreshAll} refreshing={refreshing} lastRefresh={lastRefresh} />
       <div className="body">
-        <Rail stocks={filtered} all={stockList} selected={selected} onSelect={setSelected} onAdd={() => setAddOpen(true)} sparklines={tw.sparklines} />
+        <Rail stocks={filtered} all={stockList} selected={selected} onSelect={setSelected} onAdd={() => setAddOpen(true)} sparklines={tw.sparklines} loading={loading} />
         {sel ? (
           <Detail key={sel.tk + '#' + version} stock={sel} tf={tf} setTf={setTf} chartHeight={tw.chartHeight}
-            insight={resolveInsight(sel.tk)} isLive={isLiveAI(sel.tk)} onGenerate={() => regenInsight(sel.tk)}
+            insight={resolveInsight(sel.tk)} onGenerate={() => regenInsight(sel.tk)}
             newsSum={resolveNews(sel.tk)} refreshing={refreshing}
             onRemove={() => removeTicker(sel.tk)} />
-        ) : <div className="detail"><div className="empty-state"><div><p>No stocks in your watchlist.</p><button className="btn btn-accent btn-sm" onClick={() => setAddOpen(true)} style={{ marginTop: 12 }}>Add a stock</button></div></div></div>}
+        ) : loading ? (
+          <div className="detail"><div className="empty-state"><div><span className="pulse-dot" style={{ margin: '0 auto 14px' }} /><p>Loading live market data…</p></div></div></div>
+        ) : loadErr ? (
+          <div className="detail"><div className="empty-state"><div><p>Couldn't reach the market-data service.</p><p style={{ fontSize: 12, marginTop: 6 }}>{loadErr}</p><button className="btn btn-accent btn-sm" onClick={retryLoad} style={{ marginTop: 14 }}>Retry</button></div></div></div>
+        ) : (
+          <div className="detail"><div className="empty-state"><div><p>{tickers.length ? 'No data available for your watchlist.' : 'No stocks in your watchlist.'}</p><button className="btn btn-accent btn-sm" onClick={() => setAddOpen(true)} style={{ marginTop: 12 }}>Add a stock</button></div></div></div>
+        )}
       </div>
 
       {addOpen && <AddModal onClose={() => setAddOpen(false)} onAdd={addTicker} existing={tickers} />}
@@ -196,7 +232,7 @@ function Topbar({ now, onDigest, query, setQuery, onRefresh, refreshing, lastRef
 }
 
 /* ---------------- Watchlist rail ---------------- */
-function Rail({ stocks, all, selected, onSelect, onAdd, sparklines }) {
+function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading }) {
   return (
     <aside className="rail">
       <div className="rail-head"><span className="rail-title">Watchlist</span><span className="rail-count">{all.length}</span></div>
@@ -220,7 +256,7 @@ function Rail({ stocks, all, selected, onSelect, onAdd, sparklines }) {
             </div>
           );
         })}
-        {stocks.length === 0 && <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>No matches.</div>}
+        {stocks.length === 0 && <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>{loading && all.length === 0 ? 'Loading…' : 'No matches.'}</div>}
       </div>
       <div className="rail-foot"><button className="add-row" onClick={onAdd}><Ico d={I.plus} size={15} />Add a stock</button></div>
     </aside>
@@ -229,7 +265,7 @@ function Rail({ stocks, all, selected, onSelect, onAdd, sparklines }) {
 
 /* ---------------- Detail ---------------- */
 const TFS = ['1D', '1W', '1M', '3M', '1Y', '5Y'];
-function Detail({ stock: s, tf, setTf, chartHeight, insight, isLive, onGenerate, newsSum, refreshing, onRemove }) {
+function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum, refreshing, onRemove }) {
   const up = s.changePct >= 0;
   const bars = s.series[tf];
   const stats = [
@@ -279,7 +315,7 @@ function Detail({ stock: s, tf, setTf, chartHeight, insight, isLive, onGenerate,
         {/* two columns */}
         <div className="grid2">
           <div className="col">
-            <AIInsight stock={s} insight={insight} isLive={isLive} onGenerate={onGenerate} refreshing={refreshing} />
+            <AIInsight stock={s} insight={insight} onGenerate={onGenerate} refreshing={refreshing} />
             <NewsCard stock={s} summary={newsSum} />
           </div>
           <div className="col">
@@ -294,7 +330,7 @@ function Detail({ stock: s, tf, setTf, chartHeight, insight, isLive, onGenerate,
 }
 
 /* ---------------- AI Insight ---------------- */
-function AIInsight({ stock, insight, isLive, onGenerate, refreshing }) {
+function AIInsight({ stock, insight, onGenerate, refreshing }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(false);
   const busy = loading || refreshing;
@@ -345,16 +381,19 @@ function AIInsight({ stock, insight, isLive, onGenerate, refreshing }) {
 function NewsCard({ stock, summary }) {
   return (
     <div className="card">
-      <div className="card-head"><h3>Recent News <span className="sub">· {stock.news.length} stories</span></h3></div>
-      <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', gap: 10 }}>
-        <Ico d={I.sparkle} size={14} fill="var(--accent)" style={{ marginTop: 1, flexShrink: 0 }} />
-        <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}><b style={{ color: 'var(--accent-ink)' }}>AI summary · </b>{summary || 'Mixed signals across recent coverage.'}</div>
-      </div>
+      <div className="card-head"><h3>Recent News <span className="sub">· {stock.news.length} {stock.news.length === 1 ? 'story' : 'stories'}</span></h3></div>
+      {summary && (
+        <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', gap: 10 }}>
+          <Ico d={I.sparkle} size={14} fill="var(--accent)" style={{ marginTop: 1, flexShrink: 0 }} />
+          <div style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ink-2)' }}><b style={{ color: 'var(--accent-ink)' }}>AI summary · </b>{summary}</div>
+        </div>
+      )}
       <div className="news-list">
+        {stock.news.length === 0 && <div style={{ padding: '18px', color: 'var(--ink-3)', fontSize: 13 }}>No recent headlines for {stock.tk}.</div>}
         {stock.news.map((n, i) => (
           <div className="news-item" key={i}>
             <div className="news-meta"><span className="news-src">{n.src}</span><span className="news-dot" /><span>{n.time}</span>
-              <span className={'news-impact ' + n.impact}>{n.impact === 'pos' ? 'Bullish' : n.impact === 'neg' ? 'Bearish' : 'Neutral'}</span></div>
+              {n.impact && <span className={'news-impact ' + n.impact}>{n.impact === 'pos' ? 'Bullish' : n.impact === 'neg' ? 'Bearish' : 'Neutral'}</span>}</div>
             <div className="news-head">{n.head}</div>
           </div>
         ))}

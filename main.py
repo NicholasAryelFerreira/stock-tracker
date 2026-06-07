@@ -11,11 +11,14 @@ Run:  uvicorn main:app --reload --port 8000
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+import marketdata
 
 load_dotenv()
 
@@ -63,6 +66,35 @@ def health():
         "text_model": TEXT_MODEL,
         "web_search_model": WEB_SEARCH_MODEL,
     }
+
+
+@app.get("/api/stocks")
+def stocks(tickers: str = "", fresh: bool = False):
+    """Real market data (yfinance) for a comma-separated list of tickers.
+
+    Returns {stocks: {TK: data}, errors: {TK: message}}. Tickers are fetched
+    concurrently; a failure for one ticker doesn't sink the others.
+    """
+    syms = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    if not syms:
+        return {"stocks": {}, "errors": {}}
+
+    out, errors = {}, {}
+
+    def one(tk):
+        try:
+            return tk, marketdata.build_stock(tk, force=fresh), None
+        except Exception as exc:  # noqa: BLE001 - report per-ticker, keep the rest
+            return tk, None, str(exc)
+
+    with ThreadPoolExecutor(max_workers=min(8, len(syms))) as pool:
+        for tk, data, err in pool.map(one, syms):
+            if data is not None:
+                out[tk] = data
+            else:
+                errors[tk] = err
+
+    return {"stocks": out, "errors": errors}
 
 
 @app.post("/api/complete", response_model=CompleteResponse)

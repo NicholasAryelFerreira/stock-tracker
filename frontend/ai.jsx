@@ -61,7 +61,7 @@
 
   async function insight(s) {
     const prompt = `You are an equity research analyst. Analyze ${s.tk} (${s.name}, ${s.sector}).
-MARKET DATA (mock, for a demo): ${priceContext(s)}
+MARKET DATA: ${priceContext(s)}
 RECENT HEADLINES: ${s.news.map(n => `- ${n.head} (${n.src})`).join('\n')}
 
 Write a concise, professional read. Respond ONLY with JSON:
@@ -84,6 +84,7 @@ Write a concise, professional read. Respond ONLY with JSON:
   }
 
   function localNews(s) {
+    if (!s.news || !s.news.length) return 'No recent headlines available.';
     const top = s.news[0];
     const tail = s.news.length > 1 ? ` Coverage also notes ${s.news[1].head.charAt(0).toLowerCase() + s.news[1].head.slice(1)}.` : '';
     return `${top.head}.${tail}`.replace(/\.\./g, '.');
@@ -113,8 +114,8 @@ Write a concise, professional read. Respond ONLY with JSON:
   }
 
   async function digest(stocks) {
-    const lines = stocks.map(s => `${s.tk} (${s.name}, ${s.sector}): ${s.price.toFixed(2)}, ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}% today.${s.flags.length ? ' Flags: ' + s.flags.map(f => f.label).join(', ') + '.' : ''} Top headline: "${s.news[0].head}".`).join('\n');
-    const prompt = `You are a portfolio analyst writing a morning brief for a watchlist (mock demo data). Holdings:
+    const lines = stocks.map(s => `${s.tk} (${s.name}, ${s.sector}): ${s.price.toFixed(2)}, ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}% today.${s.flags.length ? ' Flags: ' + s.flags.map(f => f.label).join(', ') + '.' : ''}${s.news && s.news[0] ? ' Top headline: "' + s.news[0].head + '".' : ''}`).join('\n');
+    const prompt = `You are a portfolio analyst writing a morning brief for a watchlist of real market data. Holdings:
 ${lines}
 
 Respond ONLY with JSON:
@@ -136,26 +137,4 @@ Include 2-4 movers (the most notable up/down or flagged names).`;
   }
 
   window.AI = { insight, summarizeNews, digest };
-
-  // ---- pre-written seed content for the default watchlist (shown until the user hits Refresh; zero API cost) ----
-  window.AI.SEED_INSIGHTS = {
-    GLD: { sentiment: 'bullish', thesis: 'Gold continues to firm as real yields ease and central-bank buying stays persistent, keeping the trend constructive. Safe-haven demand provides a floor even as the metal trades near record territory.', drivers: ['Steady central-bank accumulation', 'Real yields drifting lower', 'ETF holdings rising for weeks'], risk: 'A sharp move higher in real rates could trigger fast profit-taking after the record run.' },
-    TSM: { sentiment: 'bullish', thesis: 'Leading-edge capacity is effectively sold out as AI demand accelerates, reinforcing pricing power and a multi-year ramp. Packaging and high-bandwidth memory tailwinds support raised capex guidance.', drivers: ['Advanced-node capacity sold out', 'AI accelerator demand surging', 'Firming foundry pricing power'], risk: 'Export-control headlines remain the key swing factor and can drive sharp volatility.' },
-    BOTT: { sentiment: 'bullish', thesis: 'Humanoid and automation pilots are expanding into logistics and assembly, broadening the addressable market for the basket. Funding momentum keeps the theme well-supported.', drivers: ['Pilots expanding to real deployments', 'Strong private funding cycle', 'Falling actuator cost curve'], risk: 'Valuation is outrunning near-term revenue; the theme can de-rate quickly on sentiment shifts.' },
-    HUMN: { sentiment: 'neutral', thesis: 'The humanoid basket offers high-beta exposure to a compelling long-term theme, but unit economics remain unproven. Price action is volatile and headline-driven.', drivers: ['Improving dexterity benchmarks', 'Rising commercialization interest', 'High sensitivity to funding news'], risk: 'Elevated volatility and unproven economics make drawdowns sharp and frequent.' },
-    ISRG: { sentiment: 'bullish', thesis: 'Procedure volumes are beating expectations as surgical adoption broadens, and recurring instrument revenue keeps outpacing system placements. New platform clearances widen the runway.', drivers: ['Procedure volumes above expectations', 'Recurring instrument revenue strength', 'New platform clearance expands TAM'], risk: 'Hospital capex caution could slow new system placements in the near term.' },
-    KOID: { sentiment: 'neutral', thesis: 'A focused way to own the humanoid-robotics index, early in its commercialization curve. Constructive long-term setup but concentrated and valuation-sensitive.', drivers: ['Pure-play thematic exposure', 'Broadening pilot programs', 'Early commercialization stage'], risk: 'Concentration and rich valuations leave the fund exposed to theme-wide pullbacks.' },
-    NVMI: { sentiment: 'bullish', thesis: 'Metrology demand is lifting alongside rising capex and the high-bandwidth memory ramp, supporting an upbeat order outlook. Leverage to advanced-node investment is a clear tailwind.', drivers: ['Capex cycle turning up', 'HBM ramp lifting metrology demand', 'Advanced-node leverage'], risk: 'Semiconductor cyclicality means inventory normalization could pressure orders.' },
-    TSEM: { sectorNote: true, sentiment: 'neutral', thesis: 'Specialty foundry exposure with steadier end markets; mature-node inventory is normalizing while analog demand stabilizes. A balanced setup rather than a momentum name.', drivers: ['Mature-node inventory normalizing', 'Diversified specialty end markets', 'Stable analog demand'], risk: 'Demand swings in mature nodes are the main factor to watch.' },
-  };
-  window.AI.SEED_NEWS = {
-    GLD: 'Bullion firms on easing real yields and steady central-bank buying, with ETF holdings rising despite some profit-taking.',
-    TSM: 'Advanced-node capacity is sold out on AI demand, lifting pricing power and capex — though export-control risk lingers.',
-    BOTT: 'Humanoid and automation pilots expand into real deployments as funding stays strong, despite valuation caution.',
-    HUMN: 'Humanoid developers post better dexterity benchmarks and fresh funding, but unit economics remain unproven.',
-    ISRG: 'Procedure volumes beat expectations and a new platform clearance widens the market, with hospital capex the swing factor.',
-    KOID: 'Pilot programs broaden across the humanoid index, though analysts flag valuation as the theme outruns revenue.',
-    NVMI: 'Metrology demand rises with a turning capex cycle and HBM ramp, even as mature-node inventory normalizes.',
-    TSEM: 'Specialty foundry demand stabilizes as mature-node inventory normalizes and analog end markets hold steady.',
-  };
 })();
