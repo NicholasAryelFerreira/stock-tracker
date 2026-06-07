@@ -116,7 +116,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .wl-left { min-width: 0; }
 .wl-tk { display: flex; align-items: center; gap: 7px; }
 .wl-tk b { font-family: var(--mono); font-weight: 700; font-size: 15.5px; letter-spacing: -0.02em; }
-.wl-name { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; max-width: 150px; }
+.wl-name { font-size: 13.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; max-width: 170px; }
 .wl-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .wl-price { font-family: var(--mono); font-size: 15px; font-weight: 600; }
 .spark { display: block; }
@@ -131,8 +131,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .add-row:hover { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
 
 /* ---------- Detail ---------- */
-.detail { overflow-y: auto; min-height: 0; padding: 22px 26px 60px; }
-.detail-inner { max-width: 1080px; margin: 0 auto; }
+.detail { overflow-y: auto; min-height: 0; padding: 22px 20px 60px; }
+.detail-inner { max-width: 1560px; margin: 0 auto; }
 
 .dh { display: flex; align-items: flex-start; gap: 18px; flex-wrap: nowrap; }
 .dh-id { display: flex; flex-direction: column; gap: 7px; min-width: 0; }

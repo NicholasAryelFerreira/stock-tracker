@@ -139,7 +139,7 @@ function App() {
 
   return (
     <div className="app" data-density={tw.density}>
-      <Topbar now={now} onAdd={() => setAddOpen(true)} onDigest={() => setDigestOpen(true)} query={query} setQuery={setQuery} onRefresh={refreshAll} refreshing={refreshing} lastRefresh={lastRefresh} />
+      <Topbar now={now} onDigest={() => setDigestOpen(true)} query={query} setQuery={setQuery} onRefresh={refreshAll} refreshing={refreshing} lastRefresh={lastRefresh} />
       <div className="body">
         <Rail stocks={filtered} all={stockList} selected={selected} onSelect={setSelected} onAdd={() => setAddOpen(true)} sparklines={tw.sparklines} />
         {sel ? (
@@ -168,7 +168,7 @@ function App() {
 }
 
 /* ---------------- Topbar ---------------- */
-function Topbar({ now, onAdd, onDigest, query, setQuery, onRefresh, refreshing, lastRefresh }) {
+function Topbar({ now, onDigest, query, setQuery, onRefresh, refreshing, lastRefresh }) {
   const open = now.getDay() >= 1 && now.getDay() <= 5 && now.getHours() >= 9 && now.getHours() < 16;
   const updated = lastRefresh ? new Date(lastRefresh).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
   return (
@@ -190,7 +190,6 @@ function Topbar({ now, onAdd, onDigest, query, setQuery, onRefresh, refreshing, 
       <button className="btn btn-ghost btn-sm" onClick={onRefresh} disabled={refreshing} title={updated ? 'Last refreshed ' + updated : 'Refresh prices, news, risk & AI'}>
         <Ico d={I.refresh} size={14} className={refreshing ? 'spin' : ''} />{refreshing ? 'Refreshing…' : 'Refresh'}
       </button>
-      <button className="btn btn-ghost btn-sm" onClick={onAdd}><Ico d={I.plus} size={14} />Add</button>
       <button className="btn btn-accent" onClick={onDigest}><Ico d={I.sparkle} size={15} className="spark" fill="currentColor" /><span style={{ color: '#fff' }}>Daily Digest</span></button>
     </header>
   );
