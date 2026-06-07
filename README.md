@@ -21,14 +21,22 @@ reachable over HTTP.
 
 ### Quick start (Windows)
 
+```cmd
+REM Command Prompt:
+run.bat
+```
 ```powershell
+# PowerShell:
 .\run.ps1
 ```
 
-`run.ps1` is idempotent: on first run it creates the venv, installs deps, and
-copies `.env.example` to `.env` (edit it to add your key); on every run it just
-starts the server at <http://localhost:8000>. The steps below are the manual
-equivalent / for non-Windows.
+Both are idempotent: on first run they create the venv, install deps, and copy
+`.env.example` to `.env` (edit it to add your key); on every run they just start
+the server at <http://localhost:8000>. Stop with `Ctrl+C`.
+
+> `.\run.ps1` only works in **PowerShell** — in Command Prompt use `run.bat`
+> instead (cmd can't execute `.ps1` files). The steps below are the manual
+> equivalent / for non-Windows.
 
 ### 1. Install backend deps
 
