@@ -1,4 +1,5 @@
-// ai.jsx — real LLM calls via window.claude.complete, with robust JSON parsing.
+// ai.jsx — real LLM calls via the FastAPI backend (/api/complete) or the design
+// host's window.claude.complete, with robust JSON parsing and local fallbacks.
 (function () {
   function extractJSON(text) {
     if (!text) return null;
@@ -10,11 +11,26 @@
     }
   }
 
-  // Live model bridge. Inside the Anthropic design host (and once a real backend
-  // is wired) window.claude.complete is present and used. Standalone, it's absent,
-  // so the functions below fall back to a deterministic local synthesis derived
-  // from the same data the model would see — the app keeps working with no host.
-  const hasLive = () => !!(window.claude && typeof window.claude.complete === 'function');
+  // Model transport. Three tiers, in order:
+  //   1. Anthropic design host — window.claude.complete is injected; use it as-is.
+  //   2. Our FastAPI backend  — POST /api/complete (the key lives server-side).
+  //   3. Neither reachable     — throw, so each caller's catch uses a local fallback.
+  // `web_search` is honored only by the backend (the news summary sets it true).
+  async function complete(prompt, opts) {
+    opts = opts || {};
+    if (window.claude && typeof window.claude.complete === 'function') {
+      return await window.claude.complete(prompt);
+    }
+    const res = await fetch('/api/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, web_search: !!opts.web_search }),
+    });
+    if (!res.ok) throw new Error('backend ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data.text || '';
+  }
 
   function priceContext(s) {
     const closes = s.daily.map(d => d.c);
@@ -44,7 +60,6 @@
   }
 
   async function insight(s) {
-    if (!hasLive()) return localInsight(s);
     const prompt = `You are an equity research analyst. Analyze ${s.tk} (${s.name}, ${s.sector}).
 MARKET DATA (mock, for a demo): ${priceContext(s)}
 RECENT HEADLINES: ${s.news.map(n => `- ${n.head} (${n.src})`).join('\n')}
@@ -57,7 +72,7 @@ Write a concise, professional read. Respond ONLY with JSON:
  "risk": "1 sentence flagging the key risk to watch"
 }`;
     let raw;
-    try { raw = await window.claude.complete(prompt); } catch (_) { return localInsight(s); }
+    try { raw = await complete(prompt); } catch (_) { return localInsight(s); }
     const j = extractJSON(raw);
     if (!j || !j.thesis) return localInsight(s);
     return {
@@ -75,10 +90,11 @@ Write a concise, professional read. Respond ONLY with JSON:
   }
 
   async function summarizeNews(s) {
-    if (!hasLive()) return localNews(s);
-    const prompt = `Summarize the key takeaway across these ${s.tk} (${s.name}) headlines in ONE punchy sentence (max 24 words). Headlines:\n${s.news.map(n => '- ' + n.head).join('\n')}\nRespond with just the sentence, no preamble.`;
+    // web_search:true → the backend uses a search-capable model to ground this in
+    // current, real coverage (the host path ignores the flag and summarizes input).
+    const prompt = `Summarize the single most important recent development for ${s.tk} (${s.name}, ${s.sector}) in ONE punchy sentence (max 24 words). If you have current web results, prefer them; otherwise use these headlines:\n${s.news.map(n => '- ' + n.head).join('\n')}\nRespond with just the sentence, no preamble, no citations markup.`;
     let raw;
-    try { raw = await window.claude.complete(prompt); } catch (_) { return localNews(s); }
+    try { raw = await complete(prompt, { web_search: true }); } catch (_) { return localNews(s); }
     return (raw || '').trim().replace(/^["']|["']$/g, '') || localNews(s);
   }
 
@@ -97,7 +113,6 @@ Write a concise, professional read. Respond ONLY with JSON:
   }
 
   async function digest(stocks) {
-    if (!hasLive()) return localDigest(stocks);
     const lines = stocks.map(s => `${s.tk} (${s.name}, ${s.sector}): ${s.price.toFixed(2)}, ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}% today.${s.flags.length ? ' Flags: ' + s.flags.map(f => f.label).join(', ') + '.' : ''} Top headline: "${s.news[0].head}".`).join('\n');
     const prompt = `You are a portfolio analyst writing a morning brief for a watchlist (mock demo data). Holdings:
 ${lines}
@@ -110,7 +125,7 @@ Respond ONLY with JSON:
 }
 Include 2-4 movers (the most notable up/down or flagged names).`;
     let raw;
-    try { raw = await window.claude.complete(prompt); } catch (_) { return localDigest(stocks); }
+    try { raw = await complete(prompt); } catch (_) { return localDigest(stocks); }
     const j = extractJSON(raw);
     if (!j || !j.tone) return localDigest(stocks);
     return {
