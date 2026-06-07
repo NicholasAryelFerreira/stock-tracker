@@ -1,4 +1,4 @@
-# Stock Tracker — "Lumen"
+# Stock Tracker
 
 A modern-fintech watchlist dashboard for tracking and monitoring specific stocks,
 with AI-generated insights (per-stock research read, news summary, and a
