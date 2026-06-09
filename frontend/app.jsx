@@ -245,25 +245,32 @@ function App() {
 }
 
 /* ---------------- Triggered-alerts banner ---------------- */
-function alertChipLabel(stock, a) {
-  if ((a.mode || 'price') === 'pct') {
-    return `${stock.changePct >= 0 ? '+' : ''}${stock.changePct.toFixed(2)}% today · ${a.type === 'above' ? '≥' : '≤'} ${a.value > 0 ? '+' : ''}${a.value}%`;
-  }
-  return `$${MD.fmtPx(stock.price)} · ${a.type === 'above' ? '≥' : '≤'} $${MD.fmtPx(a.value)}`;
+function alertCurrent(stock, a) {
+  return (a.mode || 'price') === 'pct'
+    ? `${stock.changePct >= 0 ? '+' : ''}${stock.changePct.toFixed(2)}% today`
+    : `$${MD.fmtPx(stock.price)}`;
+}
+function alertRule(a) {
+  const v = (a.mode || 'price') === 'pct' ? `${a.value > 0 ? '+' : ''}${a.value}%` : `$${MD.fmtPx(a.value)}`;
+  return `${a.type === 'above' ? 'above' : 'below'} ${v}`;
 }
 function AlertsBanner({ triggered, onSelect, onDismiss }) {
   return (
     <div className="alert-banner">
-      <Ico d={I.alert} size={15} />
-      <span className="ab-title">{triggered.length} alert{triggered.length > 1 ? 's' : ''} triggered</span>
+      <div className="ab-lead">
+        <span className="ab-badge"><Ico d={I.alert} size={15} /></span>
+        <span className="ab-title">{triggered.length} alert{triggered.length > 1 ? 's' : ''} triggered</span>
+      </div>
       <div className="ab-items">
         {triggered.map((t, i) => (
-          <button key={i} className="ab-chip" onClick={() => onSelect(t.tk)} title="View stock">
-            <b>{t.tk}</b> {alertChipLabel(t.stock, t.a)}
+          <button key={i} className={'ab-chip ' + t.a.type} onClick={() => onSelect(t.tk)} title={'View ' + t.tk}>
+            <b className="tk">{t.tk}</b>
+            <span className="cur">{alertCurrent(t.stock, t.a)}</span>
+            <span className="rule"><Ico d={t.a.type === 'above' ? I.trendUp : I.trendDown} size={11} />{alertRule(t.a)}</span>
           </button>
         ))}
       </div>
-      <button className="ab-x" onClick={onDismiss} title="Dismiss"><Ico d={I.x} size={14} /></button>
+      <button className="ab-x" onClick={onDismiss} title="Dismiss"><Ico d={I.x} size={15} /></button>
     </div>
   );
 }
@@ -465,16 +472,16 @@ function NewsCard({ stock, summary }) {
       <div className="news-list">
         {stock.news.length === 0 && <div style={{ padding: '18px', color: 'var(--ink-3)', fontSize: 13 }}>No recent headlines for {stock.tk}.</div>}
         {stock.news.map((n, i) => {
-          const meta = (
-            <div className="news-meta"><span className="news-src">{n.src}</span><span className="news-dot" /><span>{n.time}</span>
-              {n.url && <span className="news-open">Open <Ico d={I.arrow} size={11} /></span>}</div>
+          const inner = (
+            <>
+              <div className="news-meta"><span className="news-src">{n.src}</span><span className="news-dot" /><span>{n.time}</span></div>
+              <div className="news-head">{n.head}</div>
+            </>
           );
           return n.url ? (
-            <a className="news-item news-link" key={i} href={n.url} target="_blank" rel="noopener noreferrer">
-              {meta}<div className="news-head">{n.head}</div>
-            </a>
+            <a className="news-item news-link" key={i} href={n.url} target="_blank" rel="noopener noreferrer">{inner}</a>
           ) : (
-            <div className="news-item" key={i}>{meta}<div className="news-head">{n.head}</div></div>
+            <div className="news-item" key={i}>{inner}</div>
           );
         })}
       </div>
