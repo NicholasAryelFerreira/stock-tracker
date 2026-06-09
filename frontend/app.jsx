@@ -53,6 +53,16 @@ const ACCENTS = {
   Violet: { a: '#7a5ae0', soft: '#ece6fb', ink: '#503a9e' },
 };
 
+/* ---------------- alerts ----------------
+ * price mode: trigger when current price crosses the value.
+ * pct mode:   trigger on TODAY's % change crossing the value (value may be negative). */
+function alertHit(stock, a) {
+  if (!stock) return false;
+  const mode = a.mode || 'price';
+  if (mode === 'pct') return a.type === 'above' ? stock.changePct >= a.value : stock.changePct <= a.value;
+  return a.type === 'above' ? stock.price >= a.value : stock.price <= a.value;
+}
+
 /* ===================================================================== */
 function App() {
   const [tickers, setTickers] = useState(() => LS.get('tickers', MD.DEFAULT_TICKERS));
@@ -62,6 +72,10 @@ function App() {
   const [digestOpen, setDigestOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [now, setNow] = useState(new Date());
+  const [alerts, setAlerts] = useState(() => LS.get('alerts', {}));   // { TK: [ {id,type,mode,value} ] }
+  const [alertsDismissed, setAlertsDismissed] = useState(false);
+  useEffect(() => { LS.set('alerts', alerts); }, [alerts]);
+  const setTickerAlerts = (tk, list) => setAlerts(p => ({ ...p, [tk]: list }));
 
   // tweaks
   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ "accent": "Gold", "density": "regular", "sparklines": true, "chartHeight": 300 }/*EDITMODE-END*/;
@@ -168,17 +182,41 @@ function App() {
   }
   function retryLoad() { loadData(true); }
 
+  // drag-and-drop reorder of the watchlist: move `fromTk` to `toTk`'s position
+  function reorderTickers(fromTk, toTk) {
+    setTickers(prev => {
+      const arr = prev.slice();
+      const fi = arr.indexOf(fromTk);
+      if (fi < 0) return prev;
+      arr.splice(fi, 1);
+      const ti = arr.indexOf(toTk);
+      arr.splice(ti < 0 ? arr.length : ti, 0, fromTk);
+      return arr;
+    });
+  }
+
+  // triggered alerts across the whole watchlist (for the top banner)
+  const triggered = [];
+  tickers.forEach(tk => (alerts[tk] || []).forEach(a => { if (alertHit(stocks[tk], a)) triggered.push({ tk, stock: stocks[tk], a }); }));
+  // re-surface the banner after each refresh (new data may trigger new alerts)
+  useEffect(() => { setAlertsDismissed(false); }, [version]);
+
   const filtered = stockList.filter(s => !query || s.tk.includes(query.toUpperCase()) || s.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div className="app" data-density={tw.density}>
       <Topbar now={now} onDigest={() => setDigestOpen(true)} query={query} setQuery={setQuery} onRefresh={refreshAll} refreshing={refreshing} lastRefresh={lastRefresh} />
+      {triggered.length > 0 && !alertsDismissed && (
+        <AlertsBanner triggered={triggered} onSelect={(tk) => setSelected(tk)} onDismiss={() => setAlertsDismissed(true)} />
+      )}
       <div className="body">
-        <Rail stocks={filtered} all={stockList} selected={selected} onSelect={setSelected} onAdd={() => setAddOpen(true)} sparklines={tw.sparklines} loading={loading} />
+        <Rail stocks={filtered} all={stockList} selected={selected} onSelect={setSelected} onAdd={() => setAddOpen(true)} sparklines={tw.sparklines} loading={loading}
+          onReorder={reorderTickers} reorderable={!query} />
         {sel ? (
           <Detail key={sel.tk + '#' + version} stock={sel} tf={tf} setTf={setTf} chartHeight={tw.chartHeight}
             insight={resolveInsight(sel.tk)} onGenerate={() => regenInsight(sel.tk)}
             newsSum={resolveNews(sel.tk)} aiBusy={aiBusy}
+            alerts={alerts[sel.tk] || []} onAlertsChange={(list) => setTickerAlerts(sel.tk, list)}
             onRemove={() => removeTicker(sel.tk)} />
         ) : loading ? (
           <div className="detail"><div className="empty-state"><div><span className="pulse-dot" style={{ margin: '0 auto 14px' }} /><p>Loading live market data…</p></div></div></div>
@@ -202,6 +240,30 @@ function App() {
         <TweakSlider label="Chart height" value={tw.chartHeight} min={220} max={400} step={10} unit="px" onChange={(v) => setTweak('chartHeight', v)} />
         <TweakToggle label="Watchlist sparklines" value={tw.sparklines} onChange={(v) => setTweak('sparklines', v)} />
       </TweaksPanel>
+    </div>
+  );
+}
+
+/* ---------------- Triggered-alerts banner ---------------- */
+function alertChipLabel(stock, a) {
+  if ((a.mode || 'price') === 'pct') {
+    return `${stock.changePct >= 0 ? '+' : ''}${stock.changePct.toFixed(2)}% today · ${a.type === 'above' ? '≥' : '≤'} ${a.value > 0 ? '+' : ''}${a.value}%`;
+  }
+  return `$${MD.fmtPx(stock.price)} · ${a.type === 'above' ? '≥' : '≤'} $${MD.fmtPx(a.value)}`;
+}
+function AlertsBanner({ triggered, onSelect, onDismiss }) {
+  return (
+    <div className="alert-banner">
+      <Ico d={I.alert} size={15} />
+      <span className="ab-title">{triggered.length} alert{triggered.length > 1 ? 's' : ''} triggered</span>
+      <div className="ab-items">
+        {triggered.map((t, i) => (
+          <button key={i} className="ab-chip" onClick={() => onSelect(t.tk)} title="View stock">
+            <b>{t.tk}</b> {alertChipLabel(t.stock, t.a)}
+          </button>
+        ))}
+      </div>
+      <button className="ab-x" onClick={onDismiss} title="Dismiss"><Ico d={I.x} size={14} /></button>
     </div>
   );
 }
@@ -235,7 +297,9 @@ function Topbar({ now, onDigest, query, setQuery, onRefresh, refreshing, lastRef
 }
 
 /* ---------------- Watchlist rail ---------------- */
-function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading }) {
+function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading, onReorder, reorderable }) {
+  const dragTk = useRef(null);
+  const [overTk, setOverTk] = useState(null);
   return (
     <aside className="rail">
       <div className="rail-head"><span className="rail-title">Watchlist</span><span className="rail-count">{all.length}</span></div>
@@ -243,8 +307,15 @@ function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading }) {
         {stocks.map(s => {
           const up = s.changePct >= 0;
           const spark = s.daily.slice(-30).map(d => d.c);
+          const cls = 'wl' + (s.tk === selected ? ' active' : '') + (reorderable ? ' draggable' : '') + (overTk === s.tk ? ' dragover' : '');
           return (
-            <div key={s.tk} className={'wl' + (s.tk === selected ? ' active' : '')} onClick={() => onSelect(s.tk)}>
+            <div key={s.tk} className={cls} onClick={() => onSelect(s.tk)}
+              draggable={reorderable}
+              onDragStart={(e) => { dragTk.current = s.tk; e.dataTransfer.effectAllowed = 'move'; }}
+              onDragOver={(e) => { if (reorderable && dragTk.current && dragTk.current !== s.tk) { e.preventDefault(); setOverTk(s.tk); } }}
+              onDragLeave={() => setOverTk(o => (o === s.tk ? null : o))}
+              onDrop={(e) => { e.preventDefault(); if (dragTk.current && dragTk.current !== s.tk) onReorder(dragTk.current, s.tk); dragTk.current = null; setOverTk(null); }}
+              onDragEnd={() => { dragTk.current = null; setOverTk(null); }}>
               <div className="wl-left">
                 <div className="wl-tk"><b>{s.tk}</b></div>
                 <div className="wl-name">{s.name}</div>
@@ -268,7 +339,7 @@ function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading }) {
 
 /* ---------------- Detail ---------------- */
 const TFS = ['1D', '1W', '1M', '3M', '1Y', '5Y'];
-function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum, aiBusy, onRemove }) {
+function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum, aiBusy, alerts, onAlertsChange, onRemove }) {
   const up = s.changePct >= 0;
   const bars = s.series[tf];
   const stats = [
@@ -323,7 +394,7 @@ function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum
           </div>
           <div className="col">
             <RiskCard stock={s} />
-            <AlertsCard stock={s} />
+            <AlertsCard stock={s} alerts={alerts} onChange={onAlertsChange} />
             <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', color: 'var(--down)' }} onClick={onRemove}><Ico d={I.trash} size={14} />Remove {s.tk} from watchlist</button>
           </div>
         </div>
@@ -393,13 +464,19 @@ function NewsCard({ stock, summary }) {
       )}
       <div className="news-list">
         {stock.news.length === 0 && <div style={{ padding: '18px', color: 'var(--ink-3)', fontSize: 13 }}>No recent headlines for {stock.tk}.</div>}
-        {stock.news.map((n, i) => (
-          <div className="news-item" key={i}>
+        {stock.news.map((n, i) => {
+          const meta = (
             <div className="news-meta"><span className="news-src">{n.src}</span><span className="news-dot" /><span>{n.time}</span>
-              {n.impact && <span className={'news-impact ' + n.impact}>{n.impact === 'pos' ? 'Bullish' : n.impact === 'neg' ? 'Bearish' : 'Neutral'}</span>}</div>
-            <div className="news-head">{n.head}</div>
-          </div>
-        ))}
+              {n.url && <span className="news-open">Open <Ico d={I.arrow} size={11} /></span>}</div>
+          );
+          return n.url ? (
+            <a className="news-item news-link" key={i} href={n.url} target="_blank" rel="noopener noreferrer">
+              {meta}<div className="news-head">{n.head}</div>
+            </a>
+          ) : (
+            <div className="news-item" key={i}>{meta}<div className="news-head">{n.head}</div></div>
+          );
+        })}
       </div>
     </div>
   );
@@ -424,45 +501,57 @@ function RiskCard({ stock }) {
   );
 }
 
-/* ---------------- Alerts ---------------- */
-function AlertsCard({ stock }) {
-  const [alerts, setAlerts] = useState(() => LS.get('alerts.' + stock.tk, []));
+/* ---------------- Alerts ----------------
+ * $ mode: alert when the price rises above / falls below a value.
+ * % mode: alert on TODAY's % change rising above / falling below a value (value may be negative,
+ *         e.g. "below -2%" fires when the stock is down 2%+ on the day). */
+function AlertsCard({ stock, alerts, onChange }) {
   const [type, setType] = useState('above');
   const [mode, setMode] = useState('price'); // 'price' | 'pct'
   const [val, setVal] = useState('');
-  useEffect(() => { setAlerts(LS.get('alerts.' + stock.tk, [])); }, [stock.tk]);
-  useEffect(() => { LS.set('alerts.' + stock.tk, alerts); }, [alerts, stock.tk]);
   function add() {
-    const v = parseFloat(val); if (!v) return;
-    setAlerts([...alerts, { type, mode, value: v, base: stock.price, id: Date.now() }]); setVal('');
+    const v = parseFloat(val);
+    if (val === '' || isNaN(v)) return;
+    onChange([...(alerts || []), { type, mode, value: v, id: Date.now() }]);
+    setVal('');
   }
-  const targetOf = (a) => {
-    const value = a.value != null ? a.value : a.price; // back-compat
-    if ((a.mode || 'price') === 'pct') { const base = a.base || stock.price; return base * (1 + (a.type === 'above' ? 1 : -1) * value / 100); }
-    return value;
-  };
+  function onInput(e) {
+    let v = e.target.value;
+    v = mode === 'pct'
+      ? v.replace(/[^0-9.\-]/g, '').replace(/(?!^)-/g, '')  // allow a single leading minus
+      : v.replace(/[^0-9.]/g, '');
+    setVal(v);
+  }
+  const list = alerts || [];
   return (
     <div className="card">
-      <div className="card-head"><h3><Ico d={I.bell} size={14} />Price Alerts</h3>{alerts.length > 0 && <span className="sub">{alerts.length} active</span>}</div>
-      {alerts.map(a => {
-        const target = targetOf(a);
-        const hit = a.type === 'above' ? stock.price >= target : stock.price <= target;
+      <div className="card-head"><h3><Ico d={I.bell} size={14} />Price Alerts</h3>{list.length > 0 && <span className="sub">{list.length} active</span>}</div>
+      {list.map(a => {
+        const hit = alertHit(stock, a);
         const isPct = (a.mode || 'price') === 'pct';
+        const label = isPct
+          ? `Today's change ${a.type === 'above' ? 'rises above' : 'falls below'} ${a.value > 0 ? '+' : ''}${a.value}%`
+          : `${a.type === 'above' ? 'Rises above' : 'Falls below'} $${Number(a.value).toFixed(2)}`;
+        const status = hit
+          ? '⚡ Triggered — condition met'
+          : isPct
+            ? `Now ${stock.changePct >= 0 ? '+' : ''}${stock.changePct.toFixed(2)}% today`
+            : `${Math.abs(((a.value - stock.price) / stock.price) * 100).toFixed(1)}% away`;
         return (
-          <div className="alert-item" key={a.id}>
+          <div className={'alert-item' + (hit ? ' hit' : '')} key={a.id}>
             <div className={'alert-ico ' + a.type}><Ico d={a.type === 'above' ? I.trendUp : I.trendDown} size={15} /></div>
             <div className="alert-main">
-              <div className="t">{a.type === 'above' ? 'Rises above' : 'Falls below'} <span className="num">{isPct ? (a.value + '%') : ('$' + Number(a.value != null ? a.value : a.price).toFixed(2))}</span></div>
-              <div className="s">{hit ? '⚡ Triggered — condition met' : `${Math.abs(((target - stock.price) / stock.price) * 100).toFixed(1)}% away${isPct ? ' · target $' + target.toFixed(2) : ''}`}</div>
+              <div className="t">{label}</div>
+              <div className="s">{status}</div>
             </div>
-            <button className="alert-x" onClick={() => setAlerts(alerts.filter(x => x.id !== a.id))}><Ico d={I.x} size={13} /></button>
+            <button className="alert-x" onClick={() => onChange(list.filter(x => x.id !== a.id))}><Ico d={I.x} size={13} /></button>
           </div>
         );
       })}
       <div className="alert-add">
         <div className="seg"><button className={type === 'above' ? 'on' : ''} onClick={() => setType('above')}>Above</button><button className={type === 'below' ? 'on' : ''} onClick={() => setType('below')}>Below</button></div>
         <div className="seg"><button className={mode === 'price' ? 'on' : ''} onClick={() => setMode('price')}>$</button><button className={mode === 'pct' ? 'on' : ''} onClick={() => setMode('pct')}>%</button></div>
-        <input className="alert-input" placeholder={mode === 'pct' ? 'e.g. 5' : '$ ' + stock.price.toFixed(2)} value={val} onChange={e => setVal(e.target.value.replace(/[^0-9.]/g, ''))} onKeyDown={e => e.key === 'Enter' && add()} />
+        <input className="alert-input" placeholder={mode === 'pct' ? 'e.g. -2.5' : '$ ' + stock.price.toFixed(2)} value={val} onChange={onInput} onKeyDown={e => e.key === 'Enter' && add()} />
         <button className="btn btn-ghost btn-sm" onClick={add} style={{ height: 34 }}>Set</button>
       </div>
     </div>

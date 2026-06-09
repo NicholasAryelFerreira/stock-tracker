@@ -136,13 +136,15 @@ def _build_news(ticker, tk):
             title = content.get("title")
             prov = (content.get("provider") or {}).get("displayName")
             ts = content.get("pubDate") or content.get("displayTime")
+            url = (content.get("canonicalUrl") or {}).get("url") or (content.get("clickThroughUrl") or {}).get("url")
         else:
             title = it.get("title")
             prov = it.get("publisher")
             ts = it.get("providerPublishTime")
+            url = it.get("link")
         if not title:
             continue
-        items.append({"src": prov or "News", "head": title, "time": _rel_time(ts), "tk": tk})
+        items.append({"src": prov or "News", "head": title, "time": _rel_time(ts), "url": url or "", "tk": tk})
         if len(items) >= 5:
             break
     return items

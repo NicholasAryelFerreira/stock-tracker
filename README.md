@@ -71,12 +71,19 @@ uvicorn main:app --reload --port 8000 # open http://localhost:8000
 ## Layout
 
 - **Topbar** — brand → search → market status + clock → Refresh / Daily Digest.
+- **Alerts banner** — appears under the top bar when any saved alert is currently
+  triggered, so you see it the moment you open the app. Click a chip to jump to that
+  stock; dismiss to hide until the next refresh.
 - **Watchlist rail** (left) — each row shows ticker, name, sparkline, price, and
-  daily change pill. Click to open the detail view.
+  daily change pill. Click to open the detail view; **drag rows to reorder** the
+  watchlist (the order persists). Reordering is disabled while a search filter is active.
 - **Detail** (right) — header with price/change and risk-flag chip, a canvas
   candlestick chart (`1D/1W/1M/3M/1Y/5Y` + crosshair tooltip), a 6-stat strip, and
-  stacked panels for **AI Insight**, **Recent News**, **Risk Monitor**, and
-  **Price Alerts** (above/below, `$` or `%`).
+  stacked panels for **AI Insight**, **Recent News** (each headline opens the source
+  article in a new tab), **Risk Monitor**, and **Price Alerts**.
+- **Price Alerts** — `$` mode fires when the price crosses a value; `%` mode fires on
+  **today's % change** crossing a value (negatives allowed, e.g. "below −2%" fires when
+  the stock is down 2%+ on the day). Triggered alerts surface in the top banner.
 - **Daily Digest** slide-over — synthesizes the whole watchlist into a morning brief.
 - **Tweaks** panel — accent color, density, chart height, sparkline toggle.
 
