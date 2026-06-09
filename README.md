@@ -7,6 +7,18 @@ whole-watchlist Daily Digest). Built from a Claude Design handoff.
 Default watchlist: `GLD, TSM, BOTT, HUMN, ISRG, KOID, NVMI, TSEM` — add/remove any
 ticker; your watchlist, selection, and alerts persist in `localStorage`.
 
+## Screenshots
+
+![Stock Tracker dashboard — watchlist, candlestick chart, stats, and AI Insight](docs/dashboard.png)
+
+_Watchlist rail with live prices and sparklines, a candlestick chart with multiple
+timeframes, a stats strip, and the on-demand AI Insight panel._
+
+![Triggered price-alert banner](docs/alerts-banner.png)
+
+_Saved alerts are checked against live data on open; triggered ones surface in a
+banner up top (price or today's % change, including negative thresholds)._
+
 ## Architecture
 
 - **`frontend/`** — static, no-build app (React + Babel Standalone from a CDN).
