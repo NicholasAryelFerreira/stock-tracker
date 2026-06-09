@@ -95,20 +95,24 @@ function App() {
   const [dataErrors, setDataErrors] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState(null);
-  const pendingFresh = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    const fresh = pendingFresh.current; pendingFresh.current = false;
+  const loadData = useCallback(async (fresh) => {
     setLoading(true); setLoadErr(null);
-    MD.fetchStocks(tickers, { fresh }).then(res => {
-      if (cancelled) return;
+    try {
+      const res = await MD.fetchStocks(tickers, { fresh });
       setStocks(prev => ({ ...prev, ...(res.stocks || {}) }));
       setDataErrors(res.errors || {});
+      return res.stocks || {};
+    } catch (e) {
+      setLoadErr(e.message || 'Failed to load');
+      return null;
+    } finally {
       setLoading(false);
-    }).catch(e => { if (cancelled) return; setLoadErr(e.message || 'Failed to load'); setLoading(false); });
-    return () => { cancelled = true; };
-  }, [tickers, version]);
+    }
+  }, [tickers]);
+
+  // load on mount and whenever the watchlist changes
+  useEffect(() => { loadData(false); }, [loadData]);
 
   const stockList = tickers.map(tk => stocks[tk]).filter(Boolean);
   const sel = stocks[selected] || stockList[0];
@@ -124,34 +128,27 @@ function App() {
     setAiCache(p => ({ ...p, [tk + '#' + version]: r })); return r;
   }, [stocks, version]);
 
-  // Refresh EVERYTHING: refetch live market data for all stocks, then a fresh AI read for the open one.
-  function refreshAll() {
+  // Refresh EVERYTHING: refetch live market data, then a fresh AI read for the open stock.
+  // Run inline (not via effects) so `refreshing` always clears in finally — even if the
+  // AI call errors or times out. (A previous effect-based version could cancel the in-flight
+  // AI call when fresh data arrived and never restart it, leaving the spinner stuck.)
+  async function refreshAll() {
     if (refreshing) return;
     setRefreshing(true);
-    pendingFresh.current = true;
-    setVersion(version + 1);
-  }
-
-  // Once fresh data for the new version is in, generate the AI read for the open stock, then finish.
-  const aiKickRef = useRef(-1);
-  useEffect(() => {
-    if (!refreshing) return;
-    const s = stocks[selected];
-    if (!s || aiKickRef.current === version) return;
-    aiKickRef.current = version;
-    let cancelled = false;
-    (async () => {
-      try {
+    const v = version + 1;
+    try {
+      const fresh = await loadData(true);                 // real, cache-bypassing data
+      setVersion(v);                                       // new AI-cache namespace
+      const s = fresh && (fresh[selected] || fresh[Object.keys(fresh)[0]]);
+      if (s) {
         const [ins, sum] = await Promise.all([window.AI.insight(s), window.AI.summarizeNews(s)]);
-        if (!cancelled) {
-          setAiCache(p => ({ ...p, [selected + '#' + version]: ins }));
-          setNewsCache(p => ({ ...p, [selected + '#' + version]: sum }));
-        }
-      } catch (e) { /* keep prior */ }
-      if (!cancelled) { setLastRefresh(Date.now()); setRefreshing(false); }
-    })();
-    return () => { cancelled = true; };
-  }, [refreshing, stocks, selected, version]);
+        setAiCache(p => ({ ...p, [s.tk + '#' + v]: ins }));
+        setNewsCache(p => ({ ...p, [s.tk + '#' + v]: sum }));
+      }
+      setLastRefresh(Date.now());
+    } catch (e) { /* keep prior data/AI on failure */ }
+    finally { setRefreshing(false); }
+  }
 
   function addTicker(tk) {
     tk = tk.toUpperCase().trim();
@@ -163,7 +160,7 @@ function App() {
     setTickers(next);
     if (selected === tk) setSelected(next[0] || null);
   }
-  function retryLoad() { pendingFresh.current = true; setVersion(version + 1); }
+  function retryLoad() { loadData(true); }
 
   const filtered = stockList.filter(s => !query || s.tk.includes(query.toUpperCase()) || s.name.toLowerCase().includes(query.toLowerCase()));
 

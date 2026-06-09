@@ -45,7 +45,8 @@ def get_client():
     if _client is None:
         from openai import OpenAI
 
-        _client = OpenAI(api_key=OPENAI_API_KEY)
+        # Bound the call so a slow web-search request fails fast instead of hanging.
+        _client = OpenAI(api_key=OPENAI_API_KEY, timeout=55, max_retries=1)
     return _client
 
 

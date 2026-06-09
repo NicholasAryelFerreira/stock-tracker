@@ -21,15 +21,24 @@
     if (window.claude && typeof window.claude.complete === 'function') {
       return await window.claude.complete(prompt);
     }
-    const res = await fetch('/api/complete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, web_search: !!opts.web_search }),
-    });
-    if (!res.ok) throw new Error('backend ' + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data.text || '';
+    // Bound the call so a slow/hung model can't spin the UI forever — on timeout
+    // the fetch aborts, the caller catches, and a local fallback is used.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    try {
+      const res = await fetch('/api/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, web_search: !!opts.web_search }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error('backend ' + res.status);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data.text || '';
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function priceContext(s) {
