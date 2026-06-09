@@ -82,7 +82,8 @@ function App() {
   const [version, setVersion] = useState(() => LS.get('version', 0));
   const [aiCache, setAiCache] = useState(() => LS.get('aiCache', {}));     // { "TK#ver": insight }
   const [newsCache, setNewsCache] = useState(() => LS.get('newsCache', {})); // { "TK#ver": summary }
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);   // data refresh — drives the top-bar spinner
+  const [aiBusy, setAiBusy] = useState(false);           // background AI generation — drives the Insight card shimmer
   const [lastRefresh, setLastRefresh] = useState(() => LS.get('lastRefresh', null));
   const [digestCache, setDigestCache] = useState({}); // { ver: digestData }
   useEffect(() => { LS.set('version', version); }, [version]);
@@ -128,26 +129,31 @@ function App() {
     setAiCache(p => ({ ...p, [tk + '#' + version]: r })); return r;
   }, [stocks, version]);
 
-  // Refresh EVERYTHING: refetch live market data, then a fresh AI read for the open stock.
-  // Run inline (not via effects) so `refreshing` always clears in finally — even if the
-  // AI call errors or times out. (A previous effect-based version could cancel the in-flight
-  // AI call when fresh data arrived and never restart it, leaving the spinner stuck.)
+  // Refresh: refetch live market data (top-bar spinner), then generate a fresh AI read for
+  // the open stock in the background (its own card shimmer). Decoupled so the top-bar spinner
+  // stops as soon as data is in — it doesn't wait on the slower AI/web-search call.
+  // Linear with try/finally so neither flag can get stuck (success, error, or timeout).
   async function refreshAll() {
     if (refreshing) return;
     setRefreshing(true);
     const v = version + 1;
+    let fresh = null;
     try {
-      const fresh = await loadData(true);                 // real, cache-bypassing data
-      setVersion(v);                                       // new AI-cache namespace
-      const s = fresh && (fresh[selected] || fresh[Object.keys(fresh)[0]]);
-      if (s) {
-        const [ins, sum] = await Promise.all([window.AI.insight(s), window.AI.summarizeNews(s)]);
-        setAiCache(p => ({ ...p, [s.tk + '#' + v]: ins }));
-        setNewsCache(p => ({ ...p, [s.tk + '#' + v]: sum }));
-      }
+      fresh = await loadData(true);                        // real, cache-bypassing data
+      setVersion(v);                                        // new AI-cache namespace
       setLastRefresh(Date.now());
-    } catch (e) { /* keep prior data/AI on failure */ }
-    finally { setRefreshing(false); }
+    } catch (e) { /* keep prior data on failure */ }
+    finally { setRefreshing(false); }                       // spinner stops once data is in
+
+    const s = fresh && (fresh[selected] || fresh[Object.keys(fresh)[0]]);
+    if (!s) return;
+    setAiBusy(true);
+    try {
+      const [ins, sum] = await Promise.all([window.AI.insight(s), window.AI.summarizeNews(s)]);
+      setAiCache(p => ({ ...p, [s.tk + '#' + v]: ins }));
+      setNewsCache(p => ({ ...p, [s.tk + '#' + v]: sum }));
+    } catch (e) { /* keep prior AI */ }
+    finally { setAiBusy(false); }
   }
 
   function addTicker(tk) {
@@ -172,7 +178,7 @@ function App() {
         {sel ? (
           <Detail key={sel.tk + '#' + version} stock={sel} tf={tf} setTf={setTf} chartHeight={tw.chartHeight}
             insight={resolveInsight(sel.tk)} onGenerate={() => regenInsight(sel.tk)}
-            newsSum={resolveNews(sel.tk)} refreshing={refreshing}
+            newsSum={resolveNews(sel.tk)} aiBusy={aiBusy}
             onRemove={() => removeTicker(sel.tk)} />
         ) : loading ? (
           <div className="detail"><div className="empty-state"><div><span className="pulse-dot" style={{ margin: '0 auto 14px' }} /><p>Loading live market data…</p></div></div></div>
@@ -262,7 +268,7 @@ function Rail({ stocks, all, selected, onSelect, onAdd, sparklines, loading }) {
 
 /* ---------------- Detail ---------------- */
 const TFS = ['1D', '1W', '1M', '3M', '1Y', '5Y'];
-function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum, refreshing, onRemove }) {
+function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum, aiBusy, onRemove }) {
   const up = s.changePct >= 0;
   const bars = s.series[tf];
   const stats = [
@@ -312,7 +318,7 @@ function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum
         {/* two columns */}
         <div className="grid2">
           <div className="col">
-            <AIInsight stock={s} insight={insight} onGenerate={onGenerate} refreshing={refreshing} />
+            <AIInsight stock={s} insight={insight} onGenerate={onGenerate} aiBusy={aiBusy} />
             <NewsCard stock={s} summary={newsSum} />
           </div>
           <div className="col">
@@ -327,10 +333,10 @@ function Detail({ stock: s, tf, setTf, chartHeight, insight, onGenerate, newsSum
 }
 
 /* ---------------- AI Insight ---------------- */
-function AIInsight({ stock, insight, onGenerate, refreshing }) {
+function AIInsight({ stock, insight, onGenerate, aiBusy }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(false);
-  const busy = loading || refreshing;
+  const busy = loading || aiBusy;
   async function gen() {
     setLoading(true); setErr(false);
     try { await onGenerate(); }

@@ -19,53 +19,54 @@ reachable over HTTP.
 
 ## Running
 
-### Quick start (Windows)
+### Windows — start the app (every time)
 
-```cmd
-REM Command Prompt:
-run.bat
-```
-```powershell
-# PowerShell:
-.\run.ps1
-```
+You run the app from a terminal. `run.bat` (Command Prompt) and `run.ps1`
+(PowerShell) both do the same thing and are safe to run every time: they set up
+once on the first run, then just start the server.
 
-Both are idempotent: on first run they create the venv, install deps, and copy
-`.env.example` to `.env` (edit it to add your key); on every run they just start
-the server at <http://localhost:8000>. Stop with `Ctrl+C`.
+**Command Prompt:**
 
-> `.\run.ps1` only works in **PowerShell** — in Command Prompt use `run.bat`
-> instead (cmd can't execute `.ps1` files). The steps below are the manual
-> equivalent / for non-Windows.
+1. Open Command Prompt (Windows key → type `cmd` → Enter).
+2. Go to the project folder:
+   ```cmd
+   cd "C:\Users\nafer\github repo\Stock Tracker"
+   ```
+3. Start the app (wait for `Application startup complete`):
+   ```cmd
+   run.bat
+   ```
+4. Open your browser to <http://localhost:8000> (hard-refresh with `Ctrl+Shift+R`
+   if you changed code).
+5. Stop the app: click the terminal window and press `Ctrl+C`.
 
-### 1. Install backend deps
+**PowerShell:** same as above, but in step 3 run `.\run.ps1` (in PowerShell,
+`run.bat` alone won't run — use `.\run.bat` or `.\run.ps1`).
+
+**First run only:** the script creates `.venv`, installs dependencies, and copies
+`.env.example` to `.env`. Open `.env` and paste your `OPENAI_API_KEY` (the app runs
+without it, but AI features fall back to local output until a key is set).
+
+> **`'python' is not recognized`?** Plain Command Prompt can't find Python. Use the
+> **Anaconda Prompt** instead (Windows key → `Anaconda Prompt`), then do steps 2–4.
+> You do not need to activate any conda env — the script makes its own `.venv`.
+
+> **`address already in use` / port 8000 busy?** A previous server is still running.
+> Close that terminal window (or `Ctrl+C` it), then start again.
+
+### Manual / non-Windows
 
 ```sh
 python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# macOS/Linux:  source .venv/bin/activate
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env                  # then edit .env and paste your OPENAI_API_KEY
+uvicorn main:app --reload --port 8000 # open http://localhost:8000
 ```
 
-### 2. Configure the key
-
-```sh
-cp .env.example .env   # then edit .env and paste your OPENAI_API_KEY
-```
-
-### 3. Run
-
-```sh
-uvicorn main:app --reload --port 8000
-```
-
-Open <http://localhost:8000>. The backend serves the frontend and the AI endpoints
-from one origin.
-
-> **Note:** market data now comes from the backend, so run via `uvicorn` (above).
-> A static-only server (`python -m http.server --directory frontend`) will load the
-> UI but show a "couldn't reach the market-data service" state, since `/api/*` isn't
-> available — fine for pure CSS/layout tweaks only.
+> Market data comes from the backend, so run via `uvicorn` (or the scripts above).
+> A static-only server (`python -m http.server --directory frontend`) loads the UI
+> but shows a "couldn't reach the market-data service" state — fine for CSS-only work.
 
 ## Layout
 
@@ -111,6 +112,17 @@ mock data — fields Yahoo doesn't provide (e.g. an ETF's P/E) render as "—".
 (derived from the real price/news data). The AI Insight and news summary are **empty
 until generated** — click **Generate insight** (or **Refresh**) to produce a live read;
 nothing is pre-canned.
+
+**When the AI actually runs (it costs money, so it's on-demand):**
+
+- **Page load:** no AI. The 5–10s on first open is the live market-data fetch from
+  Yahoo (8 tickers), not the model. Cached 60s afterward.
+- **Refresh:** refetches market data (top-bar spinner), then generates a live insight +
+  news summary for the *open* stock in the background (the Insight card shows its own
+  shimmer). The spinner stops when the data is in; the card fills when the AI returns.
+- **Daily Digest:** calls the model when you open it, then caches the result for that
+  snapshot — reopening reuses it; a Refresh invalidates it.
+- **Generate / Regenerate** buttons: one live call for that one stock.
 
 **OpenAI (`main.py`).** Calls go through the **Responses API**. The news summary
 sets `web_search: true`, which uses the hosted `web_search` tool with a
