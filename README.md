@@ -2,7 +2,7 @@
 
 A modern-fintech watchlist dashboard for tracking and monitoring specific stocks,
 with AI-generated insights (per-stock research read, news summary, and a
-whole-watchlist Daily Digest). Built from a Claude Design handoff.
+whole-watchlist Daily Digest).
 
 Default watchlist: `GLD, TSM, BOTT, HUMN, ISRG, KOID, NVMI, TSEM` — add/remove any
 ticker; your watchlist, selection, and alerts persist in `localStorage`.
@@ -127,7 +127,7 @@ mock data — fields Yahoo doesn't provide (e.g. an ETF's P/E) render as "—".
 > or change. Swap `marketdata.py` for a paid market-data API for production.
 
 **AI transport (`frontend/ai.jsx`).** Each AI call tries, in order: the design host's
-`window.claude.complete` → our `POST /api/complete` → a deterministic local fallback
+injected `complete()` → our `POST /api/complete` → a deterministic local fallback
 (derived from the real price/news data). The AI Insight and news summary are **empty
 until generated** — click **Generate insight** (or **Refresh**) to produce a live read;
 nothing is pre-canned.

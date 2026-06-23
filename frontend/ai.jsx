@@ -1,5 +1,5 @@
 // ai.jsx — real LLM calls via the FastAPI backend (/api/complete) or the design
-// host's window.claude.complete, with robust JSON parsing and local fallbacks.
+// host's injected complete() function, with robust JSON parsing and local fallbacks.
 (function () {
   function extractJSON(text) {
     if (!text) return null;
@@ -12,7 +12,7 @@
   }
 
   // Model transport. Three tiers, in order:
-  //   1. Anthropic design host — window.claude.complete is injected; use it as-is.
+  //   1. Design host — an injected complete() function is used as-is, if present.
   //   2. Our FastAPI backend  — POST /api/complete (the key lives server-side).
   //   3. Neither reachable     — throw, so each caller's catch uses a local fallback.
   // `web_search` is honored only by the backend (the news summary sets it true).
